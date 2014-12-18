@@ -77,45 +77,6 @@ PATH=$PATH:$build_dir/vendor/node/bin
 # Run subsequent node/npm commands from the build path
 cd $build_dir
 
-is_gruntfile_present= [ -f $build_dir/grunt.js ] || [ -f $build_dir/Gruntfile.js ] || [ -f $build_dir/Gruntfile.coffee ];
-if $is_gruntfile_present; then
-  status "Found Gruntfile"
-  status "Augmenting package.json with grunt and grunt-cli"
-  # Do this because we want to cache it with other node_modules. Otherwise it will be pruned.
-  # It doesn't matter if grunt and/or grunt-cli is already there
-  awk '{ if ( $0 ~ /"dependencies".*/ ) {
-              printf "%s\n%s\n%s\n", $0, "\"grunt-cli\": \"*\",", "\"grunt\": \"*\",";
-         } else {
-              print $0;
-         }
-    }' package.json > tmp-package.json;
-  cp tmp-package.json package.json;
-  rm tmp-package.json;
-else
-  status "No Gruntfile (grunt.js, Gruntfile.js, Gruntfile.coffee) found"
-fi
-
-
-# If node_modules directory is checked into source control then
-# rebuild any native deps. Otherwise, restore from the build cache.
-if test -d $build_dir/node_modules; then
-  status "Found existing node_modules directory; skipping cache"
-  status "Rebuilding any native dependencies"
-  npm rebuild 2>&1 | indent
-elif test -d $cache_dir/node/node_modules; then
-  status "Restoring node_modules directory from cache"
-  cp -r $cache_dir/node/node_modules $build_dir/
-
-  status "Pruning cached dependencies not specified in package.json"
-  npm prune 2>&1 | indent
-
-  if test -f $cache_dir/node/.heroku/node-version && [ $(cat $cache_dir/node/.heroku/node-version) != "$node_version" ]; then
-    status "Node version changed since last build; rebuilding dependencies"
-    npm rebuild 2>&1 | indent
-  fi
-
-fi
-
 # Scope config var availability only to `npm install`
 (
   if [ -d "$env_dir" ]; then
@@ -153,39 +114,10 @@ status "Cleaning up node-gyp and npm artifacts"
 rm -rf "$build_dir/.node-gyp"
 rm -rf "$build_dir/.npm"
 
-# If Procfile is absent, try to create one using `npm start`
-if [ ! -e $build_dir/Procfile ]; then
-  npm_start=$(cat $build_dir/package.json | $bp_dir/vendor/jq -r .scripts.start)
-
-  # If `scripts.start` is set in package.json, or a server.js file
-  # is present in the app root, then create a default Procfile
-  if [ "$npm_start" != "null" ] || [ -f $build_dir/server.js ]; then
-    status "No Procfile found; Adding npm start to new Procfile"
-    echo "web: npm start" > $build_dir/Procfile
-  else
-    status "Procfile not found and npm start script is undefined"
-    protip "Create a Procfile or specify a start script in package.json"
-  fi
-fi
-
 status "Building runtime environment"
 mkdir -p $build_dir/.profile.d
 echo "export PATH=\"\$HOME/vendor/node/bin:\$HOME/bin:\$HOME/node_modules/.bin:\$PATH\";" > $build_dir/.profile.d/nodejs.sh
 echo "export PATH=\"\$HOME/.gem/ruby/1.9.1/bin:\$PATH\"" > $build_dir/.profile.d/ruby.sh
-
-# Check and run Grunt
-(
-  if $is_gruntfile_present; then
-    # get the env vars
-    if [ -d "$env_dir" ]; then
-      status "Exporting config vars to environment"
-      export_env_dir $env_dir
-    fi
-
-    status "Running grunt heroku:$NODE_ENV task"
-    $build_dir/node_modules/.bin/grunt heroku:$NODE_ENV
-  fi
-)
 
 # Post package.json to nomnom service
 # Use a subshell so failures won't break the build.
