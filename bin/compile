@@ -14,6 +14,28 @@ bp_dir=$(cd $(dirname $0); cd ..; pwd)
 # Load some convenience functions like status(), echo(), and indent()
 source $bp_dir/bin/common.sh
 
+# install sass
+status "Installing Sass"
+export GEM_HOME=$build_dir/.gem/ruby/1.9.1
+PATH="$GEM_HOME/bin:$PATH"
+if test -d $cache_dir/ruby/.gem; then
+  status "Restoring ruby gems directory from cache"
+  cp -r $cache_dir/ruby/.gem $build_dir
+  HOME=$build_dir gem update sass --user-install --no-rdoc --no-ri
+else
+  HOME=$build_dir gem install sass --user-install --no-rdoc --no-ri
+fi
+
+# cache ruby gems compass
+rm -rf $cache_dir/ruby
+mkdir -p $cache_dir/ruby
+
+# If app has a gems directory, cache it.
+if test -d $build_dir/.gem; then
+  status "Caching ruby gems directory for future builds"
+  cp -r $build_dir/.gem $cache_dir/ruby
+fi
+
 # Output npm debug info on error
 trap cat_npm_debug_log ERR
 
@@ -144,28 +166,6 @@ if [ ! -e $build_dir/Procfile ]; then
     status "Procfile not found and npm start script is undefined"
     protip "Create a Procfile or specify a start script in package.json"
   fi
-fi
-
-# install sass
-status "Installing Sass"
-export GEM_HOME=$build_dir/.gem/ruby/1.9.1
-PATH="$GEM_HOME/bin:$PATH"
-if test -d $cache_dir/ruby/.gem; then
-  status "Restoring ruby gems directory from cache"
-  cp -r $cache_dir/ruby/.gem $build_dir
-  HOME=$build_dir gem update sass --user-install --no-rdoc --no-ri
-else
-  HOME=$build_dir gem install sass --user-install --no-rdoc --no-ri
-fi
-
-# cache ruby gems compass
-rm -rf $cache_dir/ruby
-mkdir -p $cache_dir/ruby
-
-# If app has a gems directory, cache it.
-if test -d $build_dir/.gem; then
-  status "Caching ruby gems directory for future builds"
-  cp -r $build_dir/.gem $cache_dir/ruby
 fi
 
 status "Building runtime environment"
